@@ -649,6 +649,224 @@ def parse_hero_entries(
     return heroes
 
 
+def parse_upgrade_data_entries(
+    upgrade_rows_text: str,
+) -> dict[str, list[dict[str, object]]]:
+    header, rows = read_csv_rows(upgrade_rows_text)
+    tracks: dict[str, list[dict[str, object]]] = {}
+    current_track = ""
+
+    for raw_row in rows:
+        row = dict(zip(header, raw_row))
+        track_name = row.get("Name", "")
+        if track_name:
+            current_track = track_name
+        if not current_track:
+            continue
+
+        level = to_int(row.get("UpgradeLevel", ""))
+        if level is None:
+            continue
+
+        tracks.setdefault(current_track, []).append(
+            {
+                "level": level,
+                "upgrade_type": row.get("UpgradeType", ""),
+                "build_time": seconds_from_parts(
+                    row.get("UpgradeTimeDays", ""),
+                    row.get("UpgradeTimeHours", ""),
+                    row.get("UpgradeTimeMinutes", ""),
+                    row.get("UpgradeTimeSeconds", ""),
+                ),
+                "upgrade_resource": build_resource_label(row.get("UpgradeResource", "")),
+                "build_cost": to_int(row.get("UpgradeCost", "")) or 0,
+                "upgrade_priority": to_int(row.get("UpgradePriority", "")) or 0,
+            }
+        )
+
+    for entries in tracks.values():
+        entries.sort(key=lambda item: item["level"])
+
+    return tracks
+
+
+def parse_guardian_entries(
+    guardian_rows_text: str,
+    localization: dict[str, str],
+    upgrade_tracks: dict[str, list[dict[str, object]]],
+) -> list[dict[str, object]]:
+    header, rows = read_csv_rows(guardian_rows_text)
+    blocks = group_building_blocks(rows)
+    guardians: list[dict[str, object]] = []
+
+    for block in blocks:
+        filled = fill_block_rows(block, header)
+        if not filled:
+            continue
+
+        first = filled[0]
+        if first.get("Deprecated", "").upper() == "TRUE":
+            continue
+        if not first.get("PreviewScenario", ""):
+            continue
+
+        localized_name = localization.get(first.get("TID", ""), first.get("Name", "")) or first.get("Name", "")
+        upgrade_data_name = first.get("UpgradeData", "")
+        upgrade_levels = upgrade_tracks.get(upgrade_data_name, [])
+        if not upgrade_levels:
+            continue
+
+        levels: list[dict[str, object]] = []
+        for row in filled:
+            level = to_int(row.get("Level", ""))
+            if level is None:
+                continue
+            upgrade_level = next((item for item in upgrade_levels if item["level"] == level), None)
+            if upgrade_level is None:
+                continue
+            levels.append(
+                {
+                    "level": level,
+                    "build_cost": upgrade_level["build_cost"],
+                    "build_time": upgrade_level["build_time"],
+                    "upgrade_resource": upgrade_level["upgrade_resource"],
+                    "activation_radius": to_int(row.get("ActivationRadius", "")),
+                    "leap_time_ms": to_int(row.get("LeapTimeMS", "")),
+                    "leap_distance": to_int(row.get("LeapDistance", "")),
+                    "patrol_radius": to_int(row.get("PatrolRadius", "")),
+                    "strength": to_int(row.get("Strength", "")) or 0,
+                    "town_hall_level": 18,
+                }
+            )
+
+        guardians.append(
+            {
+                "_id": 29000000 + len(guardians),
+                "name": localized_name,
+                "info": localization.get(first.get("InfoTID", ""), ""),
+                "TID": {
+                    "name": first.get("TID", ""),
+                    "info": first.get("InfoTID", ""),
+                },
+                "type": first.get("DisplaySkin", "") or "Guardian",
+                "upgrade_resource": upgrade_levels[0]["upgrade_resource"],
+                "village": "home",
+                "width": 0,
+                "superchargeable": False,
+                "levels": levels,
+                "production_building": "Hero Hall",
+                "production_building_level": 18,
+                "is_flying": False,
+                "is_air_targeting": False,
+                "is_ground_targeting": True,
+                "attack_range": to_int(first.get("ActivationRadius", "")) or 0,
+            }
+        )
+
+    return guardians
+
+
+def parse_pet_house_townhall_levels(
+    building_rows_text: str,
+) -> dict[int, int]:
+    header, rows = read_csv_rows(building_rows_text)
+    blocks = group_building_blocks(rows)
+    lookup: dict[int, int] = {}
+    for block in blocks:
+        filled = fill_block_rows(block, header)
+        if not filled:
+            continue
+        first = filled[0]
+        if first.get("Name", "") != "Pet House":
+            continue
+        for row in filled:
+            level = to_int(row.get("BuildingLevel", ""))
+            town_hall = to_int(row.get("TownHallLevel", ""))
+            if level is not None and town_hall is not None:
+                lookup[level] = town_hall
+        break
+    return lookup
+
+
+def parse_pet_entries(
+    pet_rows_text: str,
+    localization: dict[str, str],
+    pet_house_townhall_levels: dict[int, int],
+) -> list[dict[str, object]]:
+    header, rows = read_csv_rows(pet_rows_text)
+    blocks = group_building_blocks(rows)
+    pets: list[dict[str, object]] = []
+
+    for block in blocks:
+        filled = fill_block_rows(block, header)
+        if not filled:
+            continue
+
+        first = filled[0]
+        if first.get("Deprecated", "").upper() == "TRUE":
+            continue
+        if not first.get("PreviewScenario", ""):
+            continue
+
+        localized_name = localization.get(first.get("TID", ""), first.get("Name", "")) or first.get("Name", "")
+        levels: list[dict[str, object]] = []
+        for row in filled:
+            level = to_int(row.get("TroopLevel", ""))
+            if level is None:
+                continue
+            lab_level = to_int(row.get("LaboratoryLevel", ""))
+            town_hall_level = pet_house_townhall_levels.get(lab_level or 0)
+            levels.append(
+                {
+                    "level": level,
+                    "build_cost": to_int(row.get("UpgradeCost", "")) or 0,
+                    "build_time": seconds_from_parts(
+                        "0",
+                        row.get("UpgradeTimeH", ""),
+                        row.get("UpgradeTimeM", ""),
+                        "0",
+                    ),
+                    "upgrade_resource": build_resource_label(row.get("UpgradeResource", "")),
+                    "hitpoints": to_int(row.get("Hitpoints", "")) or 0,
+                    "dps": to_int(row.get("DPS", "")) or 0,
+                    "attack_range": to_int(row.get("AttackRange", "")),
+                    "attack_speed": to_int(row.get("AttackSpeed", "")),
+                    "speed": to_int(row.get("Speed", "")),
+                    "town_hall_level": town_hall_level,
+                    "laboratory_level": lab_level,
+                    "housing_space": to_int(row.get("HousingSpace", "")),
+                }
+            )
+
+        first_level = levels[0] if levels else {}
+        pets.append(
+            {
+                "_id": 30000000 + len(pets),
+                "name": localized_name,
+                "info": localization.get(first.get("InfoTID", ""), ""),
+                "TID": {
+                    "name": first.get("TID", ""),
+                    "info": first.get("InfoTID", ""),
+                },
+                "type": "Pet",
+                "upgrade_resource": build_resource_label(first.get("UpgradeResource", "")),
+                "village": "home",
+                "width": 0,
+                "superchargeable": False,
+                "levels": levels,
+                "production_building": "Pet House",
+                "production_building_level": to_int(first.get("LaboratoryLevel", "")) or 1,
+                "attack_range": to_int(first.get("AttackRange", "")) or 0,
+                "is_flying": parse_target_flag(first.get("IsFlying", "")) or False,
+                "is_air_targeting": parse_target_flag(first.get("AirTargets", "")) or False,
+                "is_ground_targeting": parse_target_flag(first.get("GroundTargets", "")) or False,
+                "town_hall_level": first_level.get("town_hall_level"),
+            }
+        )
+
+    return pets
+
+
 def fill_block_rows(block: list[list[str]], header: list[str]) -> list[dict[str, str]]:
     last_seen = [""] * len(header)
     filled_rows: list[dict[str, str]] = []
@@ -862,11 +1080,19 @@ def derive_building_entry(
     return entry
 
 
-def export_buildings(apk_path: Path) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
+def export_buildings(apk_path: Path) -> tuple[
+    list[dict[str, object]],
+    list[dict[str, object]],
+    list[dict[str, object]],
+    list[dict[str, object]],
+]:
     with zipfile.ZipFile(apk_path) as zf:
         localization = load_localization(zf)
         buildings_text = decode_supercell_csv(zf.read("assets/logic/buildings.csv"), expected_prefixes=("Name",))
         heroes_text = decode_supercell_csv(zf.read("assets/logic/heroes.csv"), expected_prefixes=("Name",))
+        guardians_text = decode_supercell_csv(zf.read("assets/logic/guardians.csv"), expected_prefixes=("Name",))
+        pets_text = decode_supercell_csv(zf.read("assets/logic/pets.csv"), expected_prefixes=("Name",))
+        upgrade_data_text = decode_supercell_csv(zf.read("assets/logic/upgrade_data.csv"), expected_prefixes=("Name",))
         spells_text = decode_supercell_csv(zf.read("assets/logic/spells.csv"), expected_prefixes=("Name",))
         traps_text = decode_supercell_csv(zf.read("assets/logic/traps.csv"), expected_prefixes=("Name",))
         townhall_text = decode_supercell_csv(zf.read("assets/logic/townhall_levels.csv"), expected_prefixes=("Name",))
@@ -885,6 +1111,10 @@ def export_buildings(apk_path: Path) -> tuple[list[dict[str, object]], list[dict
 
     header, rows = read_csv_rows(buildings_text)
     heroes = parse_hero_entries(heroes_text, localization)
+    upgrade_tracks = parse_upgrade_data_entries(upgrade_data_text)
+    guardians = parse_guardian_entries(guardians_text, localization, upgrade_tracks)
+    pet_house_townhall_levels = parse_pet_house_townhall_levels(buildings_text)
+    pets = parse_pet_entries(pets_text, localization, pet_house_townhall_levels)
     spells_header, spells_rows_raw = read_csv_rows(spells_text)
     townhall_header, townhall_rows_raw = read_csv_rows(townhall_text)
     mini_header, mini_rows_raw = read_csv_rows(mini_levels_text)
@@ -916,7 +1146,7 @@ def export_buildings(apk_path: Path) -> tuple[list[dict[str, object]], list[dict
         buildings.append(entry)
         entry_index += 1
 
-    return buildings, heroes
+    return buildings, heroes, guardians, pets
 
 
 def compare_to_reference(exported: list[dict[str, object]], reference_path: str) -> dict[str, object]:
@@ -1002,12 +1232,28 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    buildings, heroes = export_buildings(args.apk)
-    payload = {"buildings": buildings, "heroes": heroes}
+    buildings, heroes, guardians, pets = export_buildings(args.apk)
+    payload = {
+        "buildings": buildings,
+        "heroes": heroes,
+        "guardians": guardians,
+        "pets": pets,
+    }
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
-    print(json.dumps({"buildings": len(buildings), "heroes": len(heroes), "out": str(args.out)}, indent=2))
+    print(
+        json.dumps(
+            {
+                "buildings": len(buildings),
+                "heroes": len(heroes),
+                "guardians": len(guardians),
+                "pets": len(pets),
+                "out": str(args.out),
+            },
+            indent=2,
+        )
+    )
 
     if args.compare_to:
         report = compare_to_reference(buildings, args.compare_to)

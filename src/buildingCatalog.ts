@@ -111,11 +111,86 @@ interface ClashKingHeroEntry {
   levels: ClashKingHeroLevel[];
 }
 
+interface ClashKingGuardianLevel {
+  level: number;
+  build_cost: number;
+  build_time: number;
+  upgrade_resource: string;
+  activation_radius: number | null;
+  leap_time_ms: number | null;
+  leap_distance: number | null;
+  patrol_radius: number | null;
+  strength: number;
+  town_hall_level: number | null;
+}
+
+interface ClashKingGuardianEntry {
+  _id: number;
+  name: string;
+  info: string;
+  TID: {
+    name: string;
+    info: string;
+  };
+  type: string;
+  upgrade_resource: string;
+  village: "home";
+  width: number;
+  superchargeable: boolean;
+  levels: ClashKingGuardianLevel[];
+  production_building: string;
+  production_building_level: number;
+  is_flying: boolean;
+  is_air_targeting: boolean;
+  is_ground_targeting: boolean;
+  attack_range: number;
+}
+
+interface ClashKingPetLevel {
+  level: number;
+  build_cost: number;
+  build_time: number;
+  upgrade_resource: string;
+  hitpoints: number;
+  dps: number;
+  attack_range: number | null;
+  attack_speed: number | null;
+  speed: number | null;
+  town_hall_level: number | null;
+  laboratory_level: number | null;
+  housing_space: number | null;
+}
+
+interface ClashKingPetEntry {
+  _id: number;
+  name: string;
+  info: string;
+  TID: {
+    name: string;
+    info: string;
+  };
+  type: string;
+  upgrade_resource: string;
+  village: "home";
+  width: number;
+  superchargeable: boolean;
+  levels: ClashKingPetLevel[];
+  production_building: string;
+  production_building_level: number;
+  attack_range: number;
+  is_flying: boolean;
+  is_air_targeting: boolean;
+  is_ground_targeting: boolean;
+}
+
 const THUMBNAIL_COLORS: Record<string, string> = {
   Home: "#4dd6ff",
   Defense: "#ff7b9c",
   Resource: "#72f0b2",
   Army: "#ffd166",
+  Hero: "#ff9f43",
+  Guardian: "#7f8cff",
+  Pet: "#9be564",
   Wall: "#b48dff",
   Other: "#93a4b8",
   Capital: "#b48dff",
@@ -123,6 +198,20 @@ const THUMBNAIL_COLORS: Record<string, string> = {
 };
 
 const DEFAULT_BUILDINGS_JSON_URL = `${import.meta.env.BASE_URL}data/clashking_buildings.json`;
+
+function partsFromSeconds(totalSeconds: number) {
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = Math.max(0, Math.round(totalSeconds % 60));
+  return {
+    buildTimeDays: days || null,
+    buildTimeHours: hours || null,
+    buildTimeMinutes: minutes || null,
+    buildTimeSeconds: seconds || null,
+    buildTimeTotalMinutes: totalSeconds / 60,
+  };
+}
 
 function secondsToParts(totalSeconds: number) {
   const days = Math.floor(totalSeconds / 86400);
@@ -433,6 +522,118 @@ function rowsFromClashKingHeroEntry(entry: ClashKingHeroEntry) {
   });
 }
 
+function rowsFromClashKingGuardianEntry(entry: ClashKingGuardianEntry) {
+  const exportName = entry.TID.name || entry.name;
+  const assetKey = exportName;
+
+  return entry.levels.map((levelEntry) => {
+    const parts = partsFromSeconds(levelEntry.build_time);
+    const baseRow = {
+      id: `${entry._id}:${levelEntry.level}`,
+      name: entry.name,
+      family: deriveFamily(entry.name, exportName),
+      level: levelEntry.level,
+      exportName,
+      assetKey,
+      buildingClass: "Guardian",
+      buildResource: levelEntry.upgrade_resource || entry.upgrade_resource,
+      buildCost: levelEntry.build_cost,
+      buildTimeDays: parts.buildTimeDays,
+      buildTimeHours: parts.buildTimeHours,
+      buildTimeMinutes: parts.buildTimeMinutes,
+      buildTimeSeconds: parts.buildTimeSeconds,
+      buildTimeTotalMinutes: parts.buildTimeTotalMinutes,
+      townHallLevel: levelEntry.town_hall_level ?? 18,
+      capitalHallLevel: null,
+      width: null,
+      height: null,
+      hitpoints: levelEntry.strength,
+      dps: null,
+      damage: null,
+      attackRange: levelEntry.activation_radius,
+      housingSpace: null,
+      resourcePer100Hours: null,
+      resourceMax: null,
+      maxStoredGold: null,
+      maxStoredElixir: null,
+      maxStoredDarkElixir: null,
+      village: "Home",
+      searchText: [
+        entry.name,
+        entry.info,
+        entry.TID.name,
+        entry.TID.info,
+        entry.production_building,
+        entry.type,
+        String(levelEntry.level),
+      ]
+        .join(" ")
+        .toLowerCase(),
+    } satisfies Omit<BuildingUpgradeRow, "thumbnail">;
+
+    return {
+      ...baseRow,
+      thumbnail: getBuildingThumbnail(baseRow),
+    } satisfies BuildingUpgradeRow;
+  });
+}
+
+function rowsFromClashKingPetEntry(entry: ClashKingPetEntry) {
+  const exportName = entry.TID.name || entry.name;
+  const assetKey = exportName;
+
+  return entry.levels.map((levelEntry) => {
+    const parts = partsFromSeconds(levelEntry.build_time);
+    const baseRow = {
+      id: `${entry._id}:${levelEntry.level}`,
+      name: entry.name,
+      family: deriveFamily(entry.name, exportName),
+      level: levelEntry.level,
+      exportName,
+      assetKey,
+      buildingClass: "Pet",
+      buildResource: levelEntry.upgrade_resource || entry.upgrade_resource,
+      buildCost: levelEntry.build_cost,
+      buildTimeDays: parts.buildTimeDays,
+      buildTimeHours: parts.buildTimeHours,
+      buildTimeMinutes: parts.buildTimeMinutes,
+      buildTimeSeconds: parts.buildTimeSeconds,
+      buildTimeTotalMinutes: parts.buildTimeTotalMinutes,
+      townHallLevel: levelEntry.town_hall_level,
+      capitalHallLevel: null,
+      width: null,
+      height: null,
+      hitpoints: levelEntry.hitpoints,
+      dps: levelEntry.dps,
+      damage: null,
+      attackRange: levelEntry.attack_range,
+      housingSpace: levelEntry.housing_space,
+      resourcePer100Hours: null,
+      resourceMax: null,
+      maxStoredGold: null,
+      maxStoredElixir: null,
+      maxStoredDarkElixir: null,
+      village: "Home",
+      searchText: [
+        entry.name,
+        entry.info,
+        entry.TID.name,
+        entry.TID.info,
+        entry.production_building,
+        entry.type,
+        String(levelEntry.level),
+      ]
+        .join(" ")
+        .toLowerCase(),
+    } satisfies Omit<BuildingUpgradeRow, "thumbnail">;
+
+    return {
+      ...baseRow,
+      thumbnail: getBuildingThumbnail(baseRow),
+    } satisfies BuildingUpgradeRow;
+  });
+}
+
 export async function loadBuildingUpgrades(
   jsonUrl = DEFAULT_BUILDINGS_JSON_URL,
 ) {
@@ -442,18 +643,24 @@ export async function loadBuildingUpgrades(
     const payload = (await jsonResponse.json()) as {
       buildings?: ClashKingBuildingEntry[];
       heroes?: ClashKingHeroEntry[];
+      guardians?: ClashKingGuardianEntry[];
+      pets?: ClashKingPetEntry[];
     };
     const buildings = payload.buildings ?? [];
     const buildingRows = buildings.flatMap((entry) => rowsFromClashKingEntry(entry));
+    const parseRows = <T,>(rows: T[], mapper: (entry: T) => BuildingUpgradeRow[], label: string) => {
+      try {
+        return rows.flatMap((entry) => mapper(entry));
+      } catch (error) {
+        console.error(`Failed to parse ${label} rows`, error);
+        return [];
+      }
+    };
 
-    try {
-      const heroes = payload.heroes ?? [];
-      const heroRows = heroes.flatMap((entry) => rowsFromClashKingHeroEntry(entry));
-      return [...buildingRows, ...heroRows];
-    } catch (error) {
-      console.error("Failed to parse hero rows, falling back to building rows only", error);
-      return buildingRows;
-    }
+    const heroRows = parseRows(payload.heroes ?? [], rowsFromClashKingHeroEntry, "hero");
+    const guardianRows = parseRows(payload.guardians ?? [], rowsFromClashKingGuardianEntry, "guardian");
+    const petRows = parseRows(payload.pets ?? [], rowsFromClashKingPetEntry, "pet");
+    return [...buildingRows, ...heroRows, ...guardianRows, ...petRows];
   }
 
   throw new Error(`Failed to load ${jsonUrl}: ${jsonResponse.status}`);
