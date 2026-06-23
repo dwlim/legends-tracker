@@ -1,4 +1,4 @@
-# Clash Builder Planner
+# Clash Upgrade Library
 
 A standalone Clash of Clans upgrade planner focused on builder queue planning.
 

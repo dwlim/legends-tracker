@@ -122,6 +122,8 @@ const THUMBNAIL_COLORS: Record<string, string> = {
   Builder: "#72f0b2",
 };
 
+const DEFAULT_BUILDINGS_JSON_URL = `${import.meta.env.BASE_URL}data/clashking_buildings.json`;
+
 function secondsToParts(totalSeconds: number) {
   const days = Math.floor(totalSeconds / 86400);
   const hours = Math.floor((totalSeconds % 86400) / 3600);
@@ -432,7 +434,7 @@ function rowsFromClashKingHeroEntry(entry: ClashKingHeroEntry) {
 }
 
 export async function loadBuildingUpgrades(
-  jsonUrl = "/data/clashking_buildings.json",
+  jsonUrl = DEFAULT_BUILDINGS_JSON_URL,
 ) {
   const jsonResponse = await fetch(jsonUrl);
 
