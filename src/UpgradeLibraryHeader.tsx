@@ -21,6 +21,9 @@ export function UpgradeLibraryHeader({
     <div className="panel-header library-header">
       <div>
         <h2>Clash of Clans Upgrade Library</h2>
+        <p className="library-disclaimer">
+          Unofficial fan-made guide for Clash of Clans. Not affiliated with, endorsed by, or sponsored by Supercell.
+        </p>
       </div>
       <div className="library-header-actions">
         <button type="button" className="library-download-button" onClick={onDownloadCsv} disabled={downloadDisabled}>

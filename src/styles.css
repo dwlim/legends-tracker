@@ -701,6 +701,12 @@ button:disabled {
   line-height: 1.5;
 }
 
+.library-disclaimer {
+  max-width: 66ch;
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
 .field-group {
   display: grid;
   gap: 8px;
