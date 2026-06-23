@@ -1,130 +1,18 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
-import { Download, Search, Settings2 } from "lucide-react";
-import {
-  formatBuildTimeLabelWithMode,
-  formatResourceLabel,
-  loadBuildingUpgrades,
-  type BuildTimeFormat,
-  type BuildingUpgradeRow,
-} from "./buildingCatalog";
+import type { BuildTimeFormat, BuildingUpgradeRow } from "./buildingCatalog";
+import { loadBuildingUpgrades, formatResourceLabel } from "./buildingCatalog";
+import { UpgradeLibraryHeader } from "./UpgradeLibraryHeader";
+import { UpgradeLibrarySearch } from "./UpgradeLibrarySearch";
+import { UpgradeLibraryTable } from "./UpgradeLibraryTable";
+import { downloadTextFile, escapeCsvValue, formatInteger, formatTotalMinutes, normalizeTownHallLevel, sanitizeFilenamePart } from "./upgradeLibraryUtils";
+import type { SortEntry, SortKey, ThemeMode } from "./upgradeLibraryTypes";
 
 const TIME_FORMAT_KEY = "clash-builder-planner.time-format";
 const THEME_KEY = "clash-builder-planner.theme";
-type ThemeMode = "light" | "dark";
-type SortDirection = "asc" | "desc";
-interface SortEntry {
-  key: SortKey;
-  direction: SortDirection;
-}
+
 type SelectionAnchor = {
   rowId: string;
 };
-type SortKey =
-  | "name"
-  | "buildingClass"
-  | "level"
-  | "townHallLevel"
-  | "buildResource"
-  | "buildCost"
-  | "buildTime"
-  | "hitpoints"
-  | "dps";
-const TIME_FORMAT_LABELS: Record<BuildTimeFormat, string> = {
-  compact: "Compact",
-  "total-minutes": "Minutes",
-  hours: "Hours",
-  days: "Days",
-};
-
-function normalizeTownHallLevel(level: number | null) {
-  if (level === null) {
-    return null;
-  }
-
-  return level === 0 ? 1 : level;
-}
-
-function escapeCsvValue(value: string) {
-  if (/[",\n\r]/.test(value)) {
-    return `"${value.replace(/"/g, '""')}"`;
-  }
-
-  return value;
-}
-
-function sanitizeFilenamePart(value: string) {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/['"]/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
-
-function downloadTextFile(filename: string, text: string) {
-  const blob = new Blob([text], { type: "text/csv;charset=utf-8" });
-  const url = window.URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  link.style.display = "none";
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  window.setTimeout(() => window.URL.revokeObjectURL(url), 0);
-}
-
-function formatTotalMinutes(totalMinutes: number, format: BuildTimeFormat) {
-  if (format === "total-minutes") {
-    if (Number.isInteger(totalMinutes)) {
-      return `${totalMinutes.toLocaleString("en-US")}m`;
-    }
-
-    return `${totalMinutes.toLocaleString("en-US", {
-      maximumFractionDigits: 1,
-    })}m`;
-  }
-
-  if (format === "hours") {
-    const totalHours = totalMinutes / 60;
-    if (Number.isInteger(totalHours)) {
-      return `${totalHours.toLocaleString("en-US")}h`;
-    }
-
-    return `${totalHours.toLocaleString("en-US", {
-      maximumFractionDigits: 1,
-    })}h`;
-  }
-
-  if (format === "days") {
-    const totalDays = totalMinutes / (24 * 60);
-    if (Number.isInteger(totalDays)) {
-      return `${totalDays.toLocaleString("en-US")}d`;
-    }
-
-    return `${totalDays.toLocaleString("en-US", {
-      maximumFractionDigits: 1,
-    })}d`;
-  }
-
-  const totalSeconds = Math.round(totalMinutes * 60);
-  const days = Math.floor(totalSeconds / 86400);
-  const hours = Math.floor((totalSeconds % 86400) / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = Math.max(0, Math.round(totalSeconds % 60));
-  const parts: string[] = [];
-
-  if (days) parts.push(`${days}d`);
-  if (hours) parts.push(`${hours}h`);
-  if (minutes) parts.push(`${minutes}m`);
-  if (seconds) parts.push(`${seconds}s`);
-
-  return parts.length > 0 ? parts.join(" ") : "0m";
-}
-
-function formatInteger(value: number | null | undefined) {
-  return typeof value === "number" ? value.toLocaleString("en-US") : "—";
-}
 
 export function UpgradeLibrary() {
   const [rows, setRows] = useState<BuildingUpgradeRow[]>([]);
@@ -216,11 +104,7 @@ export function UpgradeLibrary() {
 
   const filteredRows = useMemo(() => {
     return rows.filter((row) => {
-      if (row.village !== "Home") {
-        return false;
-      }
-
-      if (row.name.startsWith("Unused")) {
+      if (row.village !== "Home" || row.name.startsWith("Unused")) {
         return false;
       }
 
@@ -240,21 +124,13 @@ export function UpgradeLibrary() {
   const displayedRows = useMemo(() => {
     const indexedRows = filteredRows.map((row, index) => ({ row, index }));
 
-    const compareText = (left: string, right: string) =>
-      left.localeCompare(right, "en-US", { sensitivity: "base" });
+    const compareText = (left: string, right: string) => left.localeCompare(right, "en-US", { sensitivity: "base" });
     const compareNumber = (left: number | null, right: number | null) => {
       if (left === right) {
         return 0;
       }
-
-      if (left === null) {
-        return 1;
-      }
-
-      if (right === null) {
-        return -1;
-      }
-
+      if (left === null) return 1;
+      if (right === null) return -1;
       return left - right;
     };
 
@@ -364,41 +240,39 @@ export function UpgradeLibrary() {
     return `${selectedTownHalls.length} TH levels`;
   }, [selectedTownHalls, townHallLevels.length]);
 
-  const allTownHallsSelected =
-    townHallLevels.length > 0 && selectedTownHalls.length === townHallLevels.length;
+  const allTownHallsSelected = townHallLevels.length > 0 && selectedTownHalls.length === townHallLevels.length;
 
-  const selectAllTownHalls = () => {
-    setSelectedTownHalls(allTownHallsSelected ? [] : townHallLevels);
-  };
+  const downloadFilteredCsv = () => {
+    const headers = ["Name", "Class", "Level", "Town Hall", "Resource", "Cost", "Time", "HP", "DPS"];
+    const rowsForExport = displayedRows.map((row) => [
+      row.name,
+      row.buildingClass || "Unknown",
+      row.level === null || row.level === undefined ? "—" : String(row.level),
+      row.townHallLevel === null ? "—" : `TH ${normalizeTownHallLevel(row.townHallLevel) ?? 0}`,
+      formatResourceLabel(row.buildResource),
+      formatInteger(row.buildCost),
+      formatTotalMinutes(row.buildTimeTotalMinutes, timeFormat),
+      formatInteger(row.hitpoints),
+      formatInteger(row.dps),
+    ]);
 
-  const toggleTownHall = (townHallLevel: number) => {
-    setSelectedTownHalls((current) => {
-      if (current.includes(townHallLevel)) {
-        return current.filter((value) => value !== townHallLevel);
-      }
+    const csv = [headers, ...rowsForExport]
+      .map((line) => line.map((value) => escapeCsvValue(value)).join(","))
+      .join("\n");
 
-      return [...current, townHallLevel].sort((a, b) => b - a);
-    });
-  };
+    const filenameParts = ["clash-of-clans-upgrades"];
+    if (selectedTownHalls.length > 0 && selectedTownHalls.length !== townHallLevels.length) {
+      filenameParts.push(`th-${selectedTownHalls.map(String).join("-")}`);
+    } else if (selectedTownHalls.length === 0) {
+      filenameParts.push("th-none");
+    } else {
+      filenameParts.push("th-all");
+    }
+    if (search.trim()) {
+      filenameParts.push(`search-${sanitizeFilenamePart(search)}`);
+    }
 
-  const renderResourceLabel = (resource: string) => {
-    const label = formatResourceLabel(resource);
-    const normalizedResource = label.replace(/\s+/g, "");
-    const toneClass =
-      normalizedResource === "Gold"
-        ? "resource-tone-gold"
-        : normalizedResource === "Elixir"
-          ? "resource-tone-elixir"
-          : normalizedResource === "DarkElixir"
-            ? "resource-tone-dark-elixir"
-            : "";
-
-    return <span className={`resource-label ${toneClass}`}>{label}</span>;
-  };
-
-  const renderTownHallLabel = (level: number | null) => {
-    const normalizedLevel = normalizeTownHallLevel(level);
-    return normalizedLevel === null ? "—" : `TH ${normalizedLevel}`;
+    downloadTextFile(`${filenameParts.join("_")}.csv`, csv);
   };
 
   const setColumnSort = (key: SortKey, additive: boolean) => {
@@ -411,7 +285,6 @@ export function UpgradeLibrary() {
         }
 
         const currentEntry = currentEntries[existingIndex];
-
         if (currentEntry.direction === "asc") {
           return [{ key, direction: "desc" }];
         }
@@ -472,7 +345,6 @@ export function UpgradeLibrary() {
 
     const additive = event.metaKey || event.ctrlKey;
     const shift = event.shiftKey;
-
     if (!additive && !shift) {
       return;
     }
@@ -483,13 +355,11 @@ export function UpgradeLibrary() {
     if (shift) {
       const anchorId = selectionAnchorRef.current?.rowId;
       const anchorIndex = anchorId ? displayedRows.findIndex((row) => row.id === anchorId) : -1;
-
       if (anchorIndex === -1) {
         replaceSelectionRange(rowIndex, rowIndex);
       } else {
         replaceSelectionRange(anchorIndex, rowIndex);
       }
-
       selectionAnchorRef.current = { rowId };
       return;
     }
@@ -520,170 +390,37 @@ export function UpgradeLibrary() {
     selectionAnchorRef.current = { rowId };
   };
 
-  const downloadFilteredCsv = () => {
-    const headers = ["Name", "Class", "Level", "Town Hall", "Resource", "Cost", "Time", "HP", "DPS"];
-    const rowsForExport = displayedRows.map((row) => [
-      row.name,
-      row.buildingClass || "Unknown",
-      row.level === null || row.level === undefined ? "—" : String(row.level),
-      renderTownHallLabel(row.townHallLevel),
-      formatResourceLabel(row.buildResource),
-      formatInteger(row.buildCost),
-      formatBuildTimeLabelWithMode(row, timeFormat),
-      formatInteger(row.hitpoints),
-      formatInteger(row.dps),
-    ]);
-
-    const csv = [headers, ...rowsForExport]
-      .map((line) => line.map((value) => escapeCsvValue(value)).join(","))
-      .join("\n");
-
-    const filenameParts = ["clash-of-clans-upgrades"];
-
-    if (selectedTownHalls.length > 0 && selectedTownHalls.length !== townHallLevels.length) {
-      filenameParts.push(`th-${selectedTownHalls.map(String).join("-")}`);
-    } else if (selectedTownHalls.length === 0) {
-      filenameParts.push("th-none");
-    } else {
-      filenameParts.push("th-all");
-    }
-
-    if (search.trim()) {
-      filenameParts.push(`search-${sanitizeFilenamePart(search)}`);
-    }
-
-    downloadTextFile(`${filenameParts.join("_")}.csv`, csv);
-  };
-
   return (
     <section className="panel library-panel">
-      <div className="panel-header library-header">
-        <div>
-          <h2>Clash of Clans Upgrade Library</h2>
-        </div>
-        <div className="library-header-actions">
-          <button type="button" className="library-download-button" onClick={downloadFilteredCsv} disabled={filteredRows.length === 0}>
-            <Download size={15} />
-            <span>Download CSV</span>
-          </button>
-          <details className="library-settings">
-            <summary className="library-settings-summary" aria-label="Library settings">
-              <Settings2 size={16} />
-              <span>Settings</span>
-            </summary>
-            <div className="library-settings-panel">
-              <div className="library-settings-header">
-                <strong>Preferences</strong>
-              </div>
-              <label className="library-setting-row">
-                <span>Time format</span>
-                <details className="time-format-menu">
-                  <summary className="time-format-trigger" aria-label="Time format">
-                    <span className="time-format-value">{TIME_FORMAT_LABELS[timeFormat]}</span>
-                    <span className="time-format-caret" aria-hidden="true" />
-                  </summary>
-                  <div className="time-format-panel" role="menu" aria-label="Time format options">
-                    {(["compact", "total-minutes", "hours", "days"] as BuildTimeFormat[]).map((format) => (
-                      <button
-                        key={format}
-                        type="button"
-                        className={`time-format-option${timeFormat === format ? " active" : ""}`}
-                        onClick={(event) => {
-                          setTimeFormat(format);
-                          const details = event.currentTarget.closest("details");
-                          details?.removeAttribute("open");
-                        }}
-                      >
-                        {TIME_FORMAT_LABELS[format]}
-                      </button>
-                    ))}
-                  </div>
-                </details>
-              </label>
-              <div className="library-setting-row">
-                <span>Theme</span>
-                <div className="theme-segmented-control" role="group" aria-label="Theme">
-                  <button
-                    type="button"
-                    className={`theme-segment theme-segment-light${theme === "light" ? " active" : ""}`}
-                    aria-pressed={theme === "light"}
-                    onClick={() => setTheme("light")}
-                  >
-                    <span className="theme-segment-label">Light</span>
-                    <span className="theme-segment-indicator" aria-hidden="true" />
-                  </button>
-                  <button
-                    type="button"
-                    className={`theme-segment theme-segment-dark${theme === "dark" ? " active" : ""}`}
-                    aria-pressed={theme === "dark"}
-                    onClick={() => setTheme("dark")}
-                  >
-                    <span className="theme-segment-label">Dark</span>
-                    <span className="theme-segment-indicator" aria-hidden="true" />
-                  </button>
-                </div>
-              </div>
-            </div>
-          </details>
-        </div>
-      </div>
+      <UpgradeLibraryHeader
+        downloadDisabled={filteredRows.length === 0}
+        onDownloadCsv={downloadFilteredCsv}
+        timeFormat={timeFormat}
+        onTimeFormatChange={setTimeFormat}
+        theme={theme}
+        onThemeChange={setTheme}
+      />
 
-      <div className="library-search">
-        <div className="library-search-main">
-          <div className="search-row">
-            <label className="library-search-field">
-              <span>
-                <Search size={14} /> Search buildings
-              </span>
-              <input
-                type="text"
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="Search by name, class, resource, town hall..."
-                autoComplete="off"
-                spellCheck={false}
-              />
-            </label>
+      <UpgradeLibrarySearch
+        search={search}
+        onSearchChange={setSearch}
+        townHallFilterLabel={townHallFilterLabel}
+        townHallLevels={townHallLevels}
+        selectedTownHallSet={selectedTownHallSet}
+        allTownHallsSelected={allTownHallsSelected}
+        onSelectAllTownHalls={() => setSelectedTownHalls(allTownHallsSelected ? [] : townHallLevels)}
+        onToggleTownHall={(townHallLevel) => {
+          setSelectedTownHalls((current) => {
+            if (current.includes(townHallLevel)) {
+              return current.filter((value) => value !== townHallLevel);
+            }
 
-            <details className="town-hall-filter">
-              <summary className="town-hall-filter-summary" aria-label="Town Hall level filter">
-                <span className="town-hall-filter-label">Town Hall</span>
-                <span className="town-hall-filter-value">{townHallFilterLabel}</span>
-              </summary>
-              <div className="town-hall-filter-panel" role="group" aria-label="Town Hall level filter options">
-                <button
-                  type="button"
-                  className={`th-filter-chip th-filter-select-all${allTownHallsSelected ? " active" : ""}`}
-                  aria-pressed={allTownHallsSelected}
-                  onClick={selectAllTownHalls}
-                >
-                  {allTownHallsSelected ? "Deselect all" : "Select all"}
-                </button>
-                <div className="th-filter-chips">
-                  {townHallLevels.map((townHallLevel) => {
-                    const active = selectedTownHallSet.has(townHallLevel);
-                    return (
-                      <button
-                        key={townHallLevel}
-                        type="button"
-                        className={`th-filter-chip${active ? " active" : ""}`}
-                        aria-pressed={active}
-                        onClick={() => toggleTownHall(townHallLevel)}
-                      >
-                        TH {townHallLevel}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            </details>
-          </div>
-
-        </div>
-      </div>
+            return [...current, townHallLevel].sort((a, b) => b - a);
+          });
+        }}
+      />
 
       {error ? <div className="empty-state">{error}</div> : null}
-
       {!error && loading ? <div className="empty-state">Loading building data from the APK export...</div> : null}
 
       {!error && !loading && selectionSummary ? (
@@ -706,96 +443,16 @@ export function UpgradeLibrary() {
       ) : null}
 
       {!error && !loading ? (
-        <div className="table-shell">
-          <div className="table-wrap">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th aria-sort={getAriaSort("name")}>
-                    <button type="button" className="table-sort-button" onClick={(event) => setColumnSort("name", event.shiftKey)}>
-                      <span>Name</span>
-                      <span className="table-sort-indicator">{getSortIndicator("name")}</span>
-                    </button>
-                  </th>
-                  <th aria-sort={getAriaSort("buildingClass")}>
-                    <button type="button" className="table-sort-button" onClick={(event) => setColumnSort("buildingClass", event.shiftKey)}>
-                      <span>Class</span>
-                      <span className="table-sort-indicator">{getSortIndicator("buildingClass")}</span>
-                    </button>
-                  </th>
-                  <th aria-sort={getAriaSort("level")}>
-                    <button type="button" className="table-sort-button" onClick={(event) => setColumnSort("level", event.shiftKey)}>
-                      <span>Lvl</span>
-                      <span className="table-sort-indicator">{getSortIndicator("level")}</span>
-                    </button>
-                  </th>
-                  <th aria-sort={getAriaSort("townHallLevel")}>
-                    <button type="button" className="table-sort-button" onClick={(event) => setColumnSort("townHallLevel", event.shiftKey)}>
-                      <span>Town Hall</span>
-                      <span className="table-sort-indicator">{getSortIndicator("townHallLevel")}</span>
-                    </button>
-                  </th>
-                  <th aria-sort={getAriaSort("buildResource")}>
-                    <button type="button" className="table-sort-button" onClick={(event) => setColumnSort("buildResource", event.shiftKey)}>
-                      <span>Resource</span>
-                      <span className="table-sort-indicator">{getSortIndicator("buildResource")}</span>
-                    </button>
-                  </th>
-                  <th aria-sort={getAriaSort("buildCost")}>
-                    <button type="button" className="table-sort-button" onClick={(event) => setColumnSort("buildCost", event.shiftKey)}>
-                      <span>Cost</span>
-                      <span className="table-sort-indicator">{getSortIndicator("buildCost")}</span>
-                    </button>
-                  </th>
-                  <th aria-sort={getAriaSort("buildTime")}>
-                    <button type="button" className="table-sort-button" onClick={(event) => setColumnSort("buildTime", event.shiftKey)}>
-                      <span>Time</span>
-                      <span className="table-sort-indicator">{getSortIndicator("buildTime")}</span>
-                    </button>
-                  </th>
-                  <th aria-sort={getAriaSort("hitpoints")}>
-                    <button type="button" className="table-sort-button" onClick={(event) => setColumnSort("hitpoints", event.shiftKey)}>
-                      <span>HP</span>
-                      <span className="table-sort-indicator">{getSortIndicator("hitpoints")}</span>
-                    </button>
-                  </th>
-                  <th aria-sort={getAriaSort("dps")}>
-                    <button type="button" className="table-sort-button" onClick={(event) => setColumnSort("dps", event.shiftKey)}>
-                      <span>DPS</span>
-                      <span className="table-sort-indicator">{getSortIndicator("dps")}</span>
-                    </button>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {displayedRows.map((row, rowIndex) => {
-                  const selected = selectedRowIdSet.has(row.id);
-
-                  return (
-                    <tr
-                      key={row.id}
-                      className={selected ? "row-selected" : ""}
-                      onMouseDown={(event) => handleRowMouseDown(event, rowIndex, row.id)}
-                      onClick={(event) => handleRowClick(event, row.id)}
-                    >
-                      <td className="table-name">
-                        <strong>{row.name}</strong>
-                      </td>
-                      <td>{row.buildingClass || "Unknown"}</td>
-                      <td>{row.level ?? "—"}</td>
-                      <td>{renderTownHallLabel(row.townHallLevel)}</td>
-                      <td>{renderResourceLabel(row.buildResource)}</td>
-                      <td>{formatInteger(row.buildCost)}</td>
-                      <td>{formatBuildTimeLabelWithMode(row, timeFormat)}</td>
-                      <td>{formatInteger(row.hitpoints)}</td>
-                      <td>{formatInteger(row.dps)}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <UpgradeLibraryTable
+          displayedRows={displayedRows}
+          selectedRowIdSet={selectedRowIdSet}
+          timeFormat={timeFormat}
+          setColumnSort={setColumnSort}
+          getSortIndicator={getSortIndicator}
+          getAriaSort={getAriaSort}
+          handleRowMouseDown={handleRowMouseDown}
+          handleRowClick={handleRowClick}
+        />
       ) : null}
     </section>
   );
