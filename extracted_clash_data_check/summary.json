@@ -1,0 +1,29 @@
+{
+  "decoded_files": [
+    "assets/logic/building_classes.csv",
+    "assets/logic/building_parts.csv",
+    "assets/logic/building_parts_layout.csv",
+    "assets/logic/buildings.csv",
+    "assets/logic/capital_buildings.csv",
+    "assets/logic/globals.csv",
+    "assets/logic/resources.csv",
+    "assets/logic/townhall_levels.csv",
+    "assets/logic/traps.csv",
+    "assets/logic/upgrade_data.csv",
+    "assets/logic/weapons.csv"
+  ],
+  "row_counts": {
+    "assets/logic/buildings.csv": 766,
+    "assets/logic/capital_buildings.csv": 259,
+    "assets/logic/townhall_levels.csv": 18,
+    "assets/logic/upgrade_data.csv": 6,
+    "assets/logic/traps.csv": 116,
+    "assets/logic/building_classes.csv": 15,
+    "assets/logic/building_parts.csv": 158,
+    "assets/logic/building_parts_layout.csv": 7,
+    "assets/logic/globals.csv": 687,
+    "assets/logic/resources.csv": 25,
+    "assets/logic/weapons.csv": 30
+  },
+  "summary_rows": 241
+}
