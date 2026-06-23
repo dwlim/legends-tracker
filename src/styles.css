@@ -1280,7 +1280,7 @@ button:disabled {
   top: calc(100% + 8px);
   right: 0;
   width: 292px;
-  padding: 12px;
+  padding: 14px 12px 12px;
   border: 1px solid var(--border);
   border-radius: 18px;
   background: var(--panel);
@@ -1291,10 +1291,11 @@ button:disabled {
 .th-filter-chips {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-content: start;
   gap: 8px;
   max-height: 192px;
   overflow-y: auto;
-  padding-right: 4px;
+  padding: 2px 4px 2px 0;
 }
 
 .th-filter-select-all {
@@ -1320,6 +1321,7 @@ button:disabled {
   background: var(--surface);
   color: var(--muted);
   font-size: 12px;
+  line-height: 1.1;
   font-weight: 700;
   transition: transform 180ms ease, background 180ms ease, border-color 180ms ease, color 180ms ease;
 }
