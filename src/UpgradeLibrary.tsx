@@ -1,400 +1,42 @@
-import { useDeferredValue, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
-import type { BuildTimeFormat, BuildingUpgradeRow } from "./buildingCatalog";
-import { loadBuildingUpgrades, formatResourceLabel } from "./buildingCatalog";
 import { UpgradeLibraryHeader } from "./UpgradeLibraryHeader";
 import { UpgradeLibrarySearch } from "./UpgradeLibrarySearch";
 import { UpgradeLibraryTable } from "./UpgradeLibraryTable";
-import { downloadTextFile, escapeCsvValue, formatInteger, formatTotalMinutes, normalizeTownHallLevel, sanitizeFilenamePart } from "./upgradeLibraryUtils";
-import type { SortEntry, SortKey, ThemeMode } from "./upgradeLibraryTypes";
-
-const TIME_FORMAT_KEY = "clash-builder-planner.time-format";
-const THEME_KEY = "clash-builder-planner.theme";
-
-type SelectionAnchor = {
-  rowId: string;
-};
+import { useUpgradeLibraryModel } from "./useUpgradeLibraryModel";
 
 export function UpgradeLibrary() {
-  const [rows, setRows] = useState<BuildingUpgradeRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [search, setSearch] = useState("");
-  const [selectedTownHalls, setSelectedTownHalls] = useState<number[]>([]);
-  const [sortEntries, setSortEntries] = useState<SortEntry[]>([{ key: "buildingClass", direction: "asc" }]);
-  const [selectedRowIds, setSelectedRowIds] = useState<string[]>([]);
-  const selectionAnchorRef = useRef<SelectionAnchor | null>(null);
-  const suppressNextClickRef = useRef(false);
-  const [timeFormat, setTimeFormat] = useState<BuildTimeFormat>(() => {
-    if (typeof window === "undefined") {
-      return "compact";
-    }
-
-    const stored = window.localStorage.getItem(TIME_FORMAT_KEY);
-    return stored === "total-minutes" ? "total-minutes" : "compact";
-  });
-  const [theme, setTheme] = useState<ThemeMode>(() => {
-    if (typeof window === "undefined") {
-      return "light";
-    }
-
-    const stored = window.localStorage.getItem(THEME_KEY);
-    return stored === "dark" ? "dark" : "light";
-  });
-  const townHallFilterInitialized = useRef(false);
-  const deferredSearch = useDeferredValue(search.trim().toLowerCase());
-  const selectedRowIdSet = useMemo(() => new Set(selectedRowIds), [selectedRowIds]);
-
-  useEffect(() => {
-    window.localStorage.setItem(TIME_FORMAT_KEY, timeFormat);
-  }, [timeFormat]);
-
-  useEffect(() => {
-    window.localStorage.setItem(THEME_KEY, theme);
-    document.documentElement.dataset.theme = theme;
-    document.documentElement.style.colorScheme = theme;
-  }, [theme]);
-
-  useEffect(() => {
-    let mounted = true;
-    setLoading(true);
-    setError(null);
-
-    loadBuildingUpgrades()
-      .then((nextRows) => {
-        if (!mounted) return;
-        setRows(nextRows);
-      })
-      .catch((err: unknown) => {
-        if (!mounted) return;
-        setError(err instanceof Error ? err.message : "Failed to load building data");
-      })
-      .finally(() => {
-        if (!mounted) return;
-        setLoading(false);
-      });
-
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
-  const townHallLevels = useMemo(() => {
-    const levels = new Set<number>();
-
-    for (const row of rows) {
-      if (row.village !== "Home" || row.name.startsWith("Unused") || row.townHallLevel === null) {
-        continue;
-      }
-      levels.add(normalizeTownHallLevel(row.townHallLevel) ?? 0);
-    }
-
-    return Array.from(levels).sort((a, b) => b - a);
-  }, [rows]);
-
-  useEffect(() => {
-    if (townHallFilterInitialized.current || townHallLevels.length === 0) {
-      return;
-    }
-
-    setSelectedTownHalls([townHallLevels[0]]);
-    townHallFilterInitialized.current = true;
-  }, [townHallLevels]);
-
-  const selectedTownHallSet = useMemo(() => new Set(selectedTownHalls), [selectedTownHalls]);
-
-  const filteredRows = useMemo(() => {
-    return rows.filter((row) => {
-      if (row.village !== "Home" || row.name.startsWith("Unused")) {
-        return false;
-      }
-
-      const normalizedTownHallLevel = normalizeTownHallLevel(row.townHallLevel);
-      if (selectedTownHallSet.size === 0 || normalizedTownHallLevel === null || !selectedTownHallSet.has(normalizedTownHallLevel)) {
-        return false;
-      }
-
-      if (deferredSearch && !row.searchText.includes(deferredSearch)) {
-        return false;
-      }
-
-      return true;
-    });
-  }, [deferredSearch, rows, selectedTownHallSet]);
-
-  const displayedRows = useMemo(() => {
-    const indexedRows = filteredRows.map((row, index) => ({ row, index }));
-
-    const compareText = (left: string, right: string) => left.localeCompare(right, "en-US", { sensitivity: "base" });
-    const compareNumber = (left: number | null, right: number | null) => {
-      if (left === right) {
-        return 0;
-      }
-      if (left === null) return 1;
-      if (right === null) return -1;
-      return left - right;
-    };
-
-    indexedRows.sort((left, right) => {
-      for (const entry of sortEntries) {
-        let comparison = 0;
-
-        switch (entry.key) {
-          case "name":
-            comparison = compareText(left.row.name, right.row.name);
-            break;
-          case "buildingClass":
-            comparison = compareText(left.row.buildingClass || "Unknown", right.row.buildingClass || "Unknown");
-            break;
-          case "level":
-            comparison = compareNumber(left.row.level, right.row.level);
-            break;
-          case "townHallLevel":
-            comparison = compareNumber(
-              normalizeTownHallLevel(left.row.townHallLevel),
-              normalizeTownHallLevel(right.row.townHallLevel),
-            );
-            break;
-          case "buildResource":
-            comparison = compareText(formatResourceLabel(left.row.buildResource), formatResourceLabel(right.row.buildResource));
-            break;
-          case "buildCost":
-            comparison = compareNumber(left.row.buildCost, right.row.buildCost);
-            break;
-          case "buildTime":
-            comparison = compareNumber(left.row.buildTimeTotalMinutes, right.row.buildTimeTotalMinutes);
-            break;
-          case "hitpoints":
-            comparison = compareNumber(left.row.hitpoints, right.row.hitpoints);
-            break;
-          case "dps":
-            comparison = compareNumber(left.row.dps, right.row.dps);
-            break;
-        }
-
-        if (comparison !== 0) {
-          return entry.direction === "asc" ? comparison : -comparison;
-        }
-      }
-
-      const fallbackName = compareText(left.row.name, right.row.name);
-      if (fallbackName !== 0) {
-        return fallbackName;
-      }
-
-      return left.index - right.index;
-    });
-
-    return indexedRows.map(({ row }) => row);
-  }, [filteredRows, sortEntries]);
-
-  const selectedRows = useMemo(
-    () => displayedRows.filter((row) => selectedRowIdSet.has(row.id)),
-    [displayedRows, selectedRowIdSet],
-  );
-
-  const selectedTotals = useMemo(() => {
-    const costByResource = new Map<string, number>();
-    let totalMinutes = 0;
-
-    for (const row of selectedRows) {
-      const resourceKey = formatResourceLabel(row.buildResource);
-      costByResource.set(resourceKey, (costByResource.get(resourceKey) ?? 0) + (row.buildCost ?? 0));
-      totalMinutes += row.buildTimeTotalMinutes;
-    }
-
-    return {
-      count: selectedRows.length,
-      costByResource: Array.from(costByResource.entries()),
-      timeMinutes: totalMinutes,
-    };
-  }, [selectedRows]);
-
-  const selectionSummary = useMemo(() => {
-    if (selectedTotals.count === 0) {
-      return null;
-    }
-
-    return {
-      countLabel: `${selectedTotals.count} selected`,
-      costLabels: selectedTotals.costByResource.map(([resource, cost]) => ({
-        resource,
-        cost: cost.toLocaleString("en-US"),
-      })),
-      timeLabel: formatTotalMinutes(selectedTotals.timeMinutes, timeFormat),
-    };
-  }, [selectedTotals, timeFormat]);
-
-  const townHallFilterLabel = useMemo(() => {
-    if (selectedTownHalls.length === 0) {
-      return "No TH";
-    }
-
-    if (selectedTownHalls.length === townHallLevels.length) {
-      return "All TH";
-    }
-
-    if (selectedTownHalls.length === 1) {
-      return `TH ${selectedTownHalls[0]}`;
-    }
-
-    return `${selectedTownHalls.length} TH levels`;
-  }, [selectedTownHalls, townHallLevels.length]);
-
-  const allTownHallsSelected = townHallLevels.length > 0 && selectedTownHalls.length === townHallLevels.length;
-
-  const downloadFilteredCsv = () => {
-    const headers = ["Name", "Class", "Level", "Town Hall", "Resource", "Cost", "Time", "HP", "DPS"];
-    const rowsForExport = displayedRows.map((row) => [
-      row.name,
-      row.buildingClass || "Unknown",
-      row.level === null || row.level === undefined ? "—" : String(row.level),
-      row.townHallLevel === null ? "—" : `TH ${normalizeTownHallLevel(row.townHallLevel) ?? 0}`,
-      formatResourceLabel(row.buildResource),
-      formatInteger(row.buildCost),
-      formatTotalMinutes(row.buildTimeTotalMinutes, timeFormat),
-      formatInteger(row.hitpoints),
-      formatInteger(row.dps),
-    ]);
-
-    const csv = [headers, ...rowsForExport]
-      .map((line) => line.map((value) => escapeCsvValue(value)).join(","))
-      .join("\n");
-
-    const filenameParts = ["clash-of-clans-upgrades"];
-    if (selectedTownHalls.length > 0 && selectedTownHalls.length !== townHallLevels.length) {
-      filenameParts.push(`th-${selectedTownHalls.map(String).join("-")}`);
-    } else if (selectedTownHalls.length === 0) {
-      filenameParts.push("th-none");
-    } else {
-      filenameParts.push("th-all");
-    }
-    if (search.trim()) {
-      filenameParts.push(`search-${sanitizeFilenamePart(search)}`);
-    }
-
-    downloadTextFile(`${filenameParts.join("_")}.csv`, csv);
-  };
-
-  const setColumnSort = (key: SortKey, additive: boolean) => {
-    setSortEntries((currentEntries) => {
-      const existingIndex = currentEntries.findIndex((entry) => entry.key === key);
-
-      if (!additive) {
-        if (existingIndex === -1) {
-          return [{ key, direction: "asc" }];
-        }
-
-        const currentEntry = currentEntries[existingIndex];
-        if (currentEntry.direction === "asc") {
-          return [{ key, direction: "desc" }];
-        }
-
-        return currentEntries.filter((entry) => entry.key !== key);
-      }
-
-      if (existingIndex === -1) {
-        return [...currentEntries, { key, direction: "asc" }];
-      }
-
-      const nextEntries = [...currentEntries];
-      const currentEntry = nextEntries[existingIndex];
-
-      if (currentEntry.direction === "asc") {
-        nextEntries[existingIndex] = { ...currentEntry, direction: "desc" };
-        return nextEntries;
-      }
-
-      return nextEntries.filter((entry) => entry.key !== key);
-    });
-  };
-
-  const getSortIndicator = (key: SortKey) => {
-    const index = sortEntries.findIndex((entry) => entry.key === key);
-    if (index === -1) {
-      return "";
-    }
-
-    const entry = sortEntries[index];
-    return `${entry.direction === "asc" ? "↑" : "↓"}${index > 0 ? index + 1 : ""}`;
-  };
-
-  const getAriaSort = (key: SortKey) => {
-    if (sortEntries[0]?.key !== key) {
-      return "none";
-    }
-
-    return sortEntries[0].direction === "asc" ? "ascending" : "descending";
-  };
-
-  const clearSelection = () => {
-    setSelectedRowIds([]);
-    selectionAnchorRef.current = null;
-  };
-
-  const replaceSelectionRange = (startIndex: number, endIndex: number) => {
-    const lower = Math.min(startIndex, endIndex);
-    const upper = Math.max(startIndex, endIndex);
-    const nextIds = displayedRows.slice(lower, upper + 1).map((row) => row.id);
-    setSelectedRowIds(nextIds);
-  };
-
-  const handleRowMouseDown = (event: MouseEvent<HTMLTableRowElement>, rowIndex: number, rowId: string) => {
-    if (event.button !== 0) {
-      return;
-    }
-
-    const additive = event.metaKey || event.ctrlKey;
-    const shift = event.shiftKey;
-    if (!additive && !shift) {
-      return;
-    }
-
-    event.preventDefault();
-    suppressNextClickRef.current = true;
-
-    if (shift) {
-      const anchorId = selectionAnchorRef.current?.rowId;
-      const anchorIndex = anchorId ? displayedRows.findIndex((row) => row.id === anchorId) : -1;
-      if (anchorIndex === -1) {
-        replaceSelectionRange(rowIndex, rowIndex);
-      } else {
-        replaceSelectionRange(anchorIndex, rowIndex);
-      }
-      selectionAnchorRef.current = { rowId };
-      return;
-    }
-
-    if (additive) {
-      setSelectedRowIds((current) =>
-        current.includes(rowId) ? current.filter((id) => id !== rowId) : [...current, rowId],
-      );
-      selectionAnchorRef.current = { rowId };
-      return;
-    }
-
-    setSelectedRowIds([rowId]);
-    selectionAnchorRef.current = { rowId };
-  };
-
-  const handleRowClick = (event: MouseEvent<HTMLTableRowElement>, rowId: string) => {
-    if (suppressNextClickRef.current) {
-      suppressNextClickRef.current = false;
-      return;
-    }
-
-    if (event.button !== 0) {
-      return;
-    }
-
-    setSelectedRowIds([rowId]);
-    selectionAnchorRef.current = { rowId };
-  };
+  const {
+    loading,
+    error,
+    search,
+    setSearch,
+    timeFormat,
+    setTimeFormat,
+    theme,
+    setTheme,
+    displayedRows,
+    selectedRowIdSet,
+    selectionSummary,
+    townHallLevels,
+    selectedTownHallSet,
+    townHallFilterLabel,
+    allTownHallsSelected,
+    downloadDisabled,
+    onDownloadCsv,
+    onSelectAllTownHalls,
+    onToggleTownHall,
+    setColumnSort,
+    getSortIndicator,
+    getAriaSort,
+    handleRowMouseDown,
+    handleRowClick,
+    clearSelection,
+  } = useUpgradeLibraryModel();
 
   return (
     <section className="panel library-panel">
       <UpgradeLibraryHeader
-        downloadDisabled={filteredRows.length === 0}
-        onDownloadCsv={downloadFilteredCsv}
+        downloadDisabled={downloadDisabled}
+        onDownloadCsv={onDownloadCsv}
         timeFormat={timeFormat}
         onTimeFormatChange={setTimeFormat}
         theme={theme}
@@ -408,16 +50,8 @@ export function UpgradeLibrary() {
         townHallLevels={townHallLevels}
         selectedTownHallSet={selectedTownHallSet}
         allTownHallsSelected={allTownHallsSelected}
-        onSelectAllTownHalls={() => setSelectedTownHalls(allTownHallsSelected ? [] : townHallLevels)}
-        onToggleTownHall={(townHallLevel) => {
-          setSelectedTownHalls((current) => {
-            if (current.includes(townHallLevel)) {
-              return current.filter((value) => value !== townHallLevel);
-            }
-
-            return [...current, townHallLevel].sort((a, b) => b - a);
-          });
-        }}
+        onSelectAllTownHalls={onSelectAllTownHalls}
+        onToggleTownHall={onToggleTownHall}
       />
 
       {error ? <div className="empty-state">{error}</div> : null}
