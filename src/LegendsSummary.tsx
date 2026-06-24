@@ -9,7 +9,7 @@ export default function LegendsSummary() {
   const [status, setStatus] = useState("Loading summaries…");
 
   useEffect(() => {
-    fetch("./legend_site/summaries.json")
+    fetch(`${import.meta.env.BASE_URL}legend_site/summaries.json`)
       .then((r) => r.json())
       .then((data) => {
         const next = (data.summaries ?? []) as SummaryItem[];
@@ -28,7 +28,7 @@ export default function LegendsSummary() {
     if (!current) return;
     setStatus(`Showing ${current.date}`);
     setContent("Loading…");
-    fetch(`./legend_site/${current.file}`)
+    fetch(`${import.meta.env.BASE_URL}legend_site/${current.file}`)
       .then((r) => r.text())
       .then(setContent)
       .catch((err) => setContent(String(err)));
