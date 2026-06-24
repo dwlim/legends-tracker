@@ -1,54 +1,29 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
-type SummaryItem = { date: string; file: string };
+const summaries = [
+  { date: "2026-06-22", content: "# 2026-06-22\n\nSee the saved summary in the deployed bundle." },
+  { date: "2026-06-24", content: "# 2026-06-24\n\nSee the saved summary in the deployed bundle." },
+];
 
 export default function LegendsSummary() {
-  const [items, setItems] = useState<SummaryItem[]>([]);
-  const [selected, setSelected] = useState("");
-  const [content, setContent] = useState("Loading…");
-  const [status, setStatus] = useState("Loading summaries…");
+  const [selected, setSelected] = useState(summaries[0]?.date ?? "");
 
-  useEffect(() => {
-    fetch(`${import.meta.env.BASE_URL}legend_site/summaries.json`)
-      .then((r) => r.json())
-      .then((data) => {
-        const next = (data.summaries ?? []) as SummaryItem[];
-        setItems(next);
-        setSelected(next[0]?.date ?? "");
-      })
-      .catch((err) => {
-        setStatus("Failed to load summaries.json");
-        setContent(String(err));
-      });
-  }, []);
-
-  const current = useMemo(() => items.find((item) => item.date === selected), [items, selected]);
-
-  useEffect(() => {
-    if (!current) return;
-    setStatus(`Showing ${current.date}`);
-    setContent("Loading…");
-    fetch(`${import.meta.env.BASE_URL}legend_site/${current.file}`)
-      .then((r) => r.text())
-      .then(setContent)
-      .catch((err) => setContent(String(err)));
-  }, [current]);
+  const current = useMemo(() => summaries.find((item) => item.date === selected) ?? summaries[0], [selected]);
 
   return (
     <main style={{ maxWidth: 900, margin: "0 auto", padding: 24, fontFamily: "system-ui, sans-serif" }}>
       <h1>Clash Legends Summary</h1>
-      <p>{status}</p>
       <label>
         Day{" "}
         <select value={selected} onChange={(e) => setSelected(e.target.value)}>
-          {items.map((item) => (
+          {summaries.map((item) => (
             <option key={item.date} value={item.date}>
               {item.date}
             </option>
           ))}
         </select>
       </label>
-      <pre style={{ whiteSpace: "pre-wrap", marginTop: 16 }}>{content}</pre>
+      <pre style={{ whiteSpace: "pre-wrap", marginTop: 16 }}>{current?.content ?? "No summary found"}</pre>
     </main>
   );
 }
