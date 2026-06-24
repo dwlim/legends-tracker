@@ -1,5 +1,7 @@
 # Clash Upgrade Library
 
+Legends summary viewer is available at `/legends-summary.html` once built or deployed.
+
 A standalone Clash of Clans upgrade planner focused on builder queue planning.
 
 ## Scripts
