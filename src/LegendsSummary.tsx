@@ -71,8 +71,14 @@ function parseSummaryMarkdown(date: string, markdown: string): SummaryData {
   };
 }
 
+function siteUrl(path: string) {
+  const base = import.meta.env.BASE_URL.endsWith("/") ? import.meta.env.BASE_URL : `${import.meta.env.BASE_URL}/`;
+  return `${base}${path.replace(/^\.?\/?/, "")}`;
+}
+
 async function loadSummaries(): Promise<SummaryData[]> {
-  const res = await fetch("./legend_site/summaries.json", { cache: "no-store" });
+  const res = await fetch(siteUrl("legend_site/summaries.json"), { cache: "no-store" });
+  if (!res.ok) throw new Error(`Failed to load summaries index (${res.status})`);
   const index = (await res.json()) as SiteIndex;
   const loaded: SummaryData[] = [];
   for (const item of index.summaries) {
@@ -80,7 +86,9 @@ async function loadSummaries(): Promise<SummaryData[]> {
       loaded.push(summaryCache.get(item.date)!);
       continue;
     }
-    const md = await fetch(`./legend_site/${item.file}`, { cache: "no-store" }).then((r) => r.text());
+    const mdRes = await fetch(siteUrl(`legend_site/${item.file}`), { cache: "no-store" });
+    if (!mdRes.ok) throw new Error(`Failed to load summary ${item.file} (${mdRes.status})`);
+    const md = await mdRes.text();
     const parsed = parseSummaryMarkdown(item.date, md);
     summaryCache.set(item.date, parsed);
     loaded.push(parsed);
@@ -117,12 +125,17 @@ function ArmyCard({ army }: { army: SummaryCard }) {
 export default function LegendsSummary() {
   const [summaries, setSummaries] = useState<SummaryData[]>([]);
   const [selected, setSelected] = useState("");
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    void loadSummaries().then((loaded) => {
-      setSummaries(loaded);
-      setSelected((current) => current || loaded[0]?.date || "");
-    });
+    void loadSummaries()
+      .then((loaded) => {
+        setSummaries(loaded);
+        setSelected((current) => current || loaded[0]?.date || "");
+      })
+      .catch((err: unknown) => {
+        setError(err instanceof Error ? err.message : "Failed to load legends summaries.");
+      });
   }, []);
 
   const current = useMemo(() => summaries.find((item) => item.date === selected) ?? summaries[0], [summaries, selected]);
@@ -130,9 +143,10 @@ export default function LegendsSummary() {
   return (
     <main style={{ maxWidth: 1100, margin: "0 auto", padding: 24, fontFamily: "system-ui, sans-serif", color: "#111827", background: "#f9fafb" }}>
       <h1 style={{ marginTop: 0 }}>Clash Legends Summary</h1>
+      {error ? <div style={{ padding: 16, border: "1px solid #fca5a5", background: "#fef2f2", color: "#991b1b", borderRadius: 12 }}>{error}</div> : null}
       <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
         <label>
-          Day{" "}
+          Day {" "}
           <select value={selected} onChange={(e) => setSelected(e.target.value)}>
             {summaries.map((item) => (
               <option key={item.date} value={item.date}>
@@ -141,7 +155,7 @@ export default function LegendsSummary() {
             ))}
           </select>
         </label>
-        <div style={{ color: "#6b7280" }}>{current?.updated ?? "Loading…"}</div>
+        <div style={{ color: "#6b7280" }}>{current?.updated ?? (error ? "" : "Loading…")}</div>
       </div>
 
       <p style={{ marginTop: 16, color: "#374151" }}>{current?.intro}</p>
