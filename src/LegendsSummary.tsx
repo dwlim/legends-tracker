@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 type SummaryCard = {
   rank: number;
@@ -25,48 +25,68 @@ type SummaryData = {
   armies: SummaryCard[];
 };
 
-const summaries: SummaryData[] = [
-  {
-    date: "2026-06-22",
+type SiteIndex = {
+  summaries: Array<{ date: string; file: string }>;
+};
+
+const summaryCache = new Map<string, SummaryData>();
+
+function parseSummaryMarkdown(date: string, markdown: string): SummaryData {
+  const lines = markdown.split(/\r?\n/);
+  const stat = (label: string) => {
+    const line = lines.find((entry) => entry.startsWith(`${label}:`));
+    return line ? line.slice(label.length + 2).trim() : "—";
+  };
+  const armyStart = lines.findIndex((line) => line.startsWith("**Top 5 most popular armies"));
+  const armyLines = armyStart >= 0 ? lines.slice(armyStart + 1) : [];
+  const armies: SummaryCard[] = [];
+  let current: SummaryCard | null = null;
+  for (const line of armyLines) {
+    const match = line.match(/^\s*\d+\.\s+(.+?)\s+—\s+(.+?)\s*$/);
+    if (match) {
+      if (current) armies.push(current);
+      current = { rank: armies.length + 1, name: match[1], uses: match[2], performance: "", troops: "", clanCastle: "", heroes: "" };
+      continue;
+    }
+    if (!current) continue;
+    if (line.startsWith("- Performance:")) current.performance = line.replace("- Performance:", "").trim();
+    if (line.startsWith("- Troops:")) current.troops = line.replace("- Troops:", "").trim();
+    if (line.startsWith("- Clan Castle:")) current.clanCastle = line.replace("- Clan Castle:", "").trim();
+    if (line.startsWith("- Heroes:")) current.heroes = line.replace("- Heroes:", "").trim();
+  }
+  if (current) armies.push(current);
+  return {
+    date,
     updated: "Updated hourly from the tracked Legend League poll data.",
     stats: {
-      attacks: "1600",
-      avgStars: "2.65",
-      avgDestruction: "95.397%",
-      threeStarRate: "70.0%",
-      fullArmy: "1588",
-      discarded: "12",
+      attacks: stat("Tracked attacks"),
+      avgStars: stat("Overall average stars"),
+      avgDestruction: stat("Overall average destruction"),
+      threeStarRate: stat("Overall 3-star rate"),
+      fullArmy: stat("Main attacks used for army comps"),
+      discarded: stat("Discarded partial/hero-only codes from army comps"),
     },
-    intro: "1588 full-army attacks tracked today. Similar variants are combined.",
-    armies: [
-      { rank: 1, name: "Dragon Rider Air (DD Electro Fangs)", uses: "579 uses (36.5%)", performance: "2.67★ avg, 96.5% avg destruction, 70.3% triples", troops: "9 Dragon, 5 Dragon Rider, 2 Inferno Dragon, 2 Rocket Loon, 1 Archer | Spells: 5 Totem, 1 Rage, 1 Overgrowth, 2 Freeze, 2 Revive", clanCastle: "1 Sky Wagon, 1 Rocket Loon, 2 Dragon Rider", heroes: "AQ (eq: Action Figure, Giant Arrow; pet: Frosty); GW (eq: Eternal Tome, Healing Tome; pet: Sneezy); MP (eq: Dark Orb, Meteor Staff; pet: Greedy Raven); DD (eq: Electro Fangs, Fire Heart; pet: Phoenix)" },
-      { rank: 2, name: "Dragon Rider Air (DD Rocket Backpack)", uses: "337 uses (21.2%)", performance: "2.75★ avg, 97.2% avg destruction, 76.6% triples", troops: "7 Rocket Loon, 7 Dragon, 5 Dragon Rider, 2 Inferno Dragon, 1 Archer | Spells: 1 Earthquake, 6 Totem, 1 Rage, 1 Poison, 1 Skeleton, 2 Freeze, 1 Overgrowth", clanCastle: "1 Sky Wagon, 1 Inferno Dragon, 1 Super Dragon", heroes: "AQ (eq: Action Figure, Giant Arrow; pet: Frosty); GW (eq: Eternal Tome, Healing Tome; pet: Sneezy); MP (eq: Dark Orb, Meteor Staff; pet: Greedy Raven); DD (eq: Flame Blower, Rocket Backpack; pet: Angry Jelly)" },
-      { rank: 3, name: "Super Bowler Smash", uses: "261 uses (16.4%)", performance: "2.65★ avg, 95.6% avg destruction, 67.0% triples", troops: "1 Baby Dragon, 2 Ice Golem, 3 Super Wall Breaker, 6 Super Bowler, 1 Rocket Loon, 5 Healer, 1 Apprentice Warden, 1 Sky Wagon, 2 Headhunter, 1 Archer | Spells: 6 Invisibility, 2 Totem, 1 Freeze, 1 Revive, 2 Rage", clanCastle: "1 Super Valkyrie, 1 Super Yeti", heroes: "BK (eq: Snake Bracelet, Spiky Ball; pet: Frosty); AQ (eq: Action Figure, Giant Arrow; pet: Sneezy); GW (eq: Eternal Tome, Heroic Torch; pet: Poison Lizard); DD (eq: Electro Fangs, Fire Heart; pet: Spirit Fox)" },
-      { rank: 4, name: "Thrower Smash", uses: "173 uses (10.9%)", performance: "2.61★ avg, 96.0% avg destruction, 67.6% triples", troops: "5 Healer, 5 Furnace, 9 Thrower, 1 Super Wall Breaker, 1 Ice Golem, 3 Sneaky Goblin, 1 Baby Dragon, 2 Minion, 2 Archer | Spells: 4 Clone, 1 Rage, 1 Totem", clanCastle: "1 Troop Launcher, 1 Super Valkyrie, 1 Super Yeti", heroes: "BK (eq: Snake Bracelet, Spiky Ball; pet: Spirit Fox); AQ (eq: Giant Arrow, Healer Puppet; pet: Frosty); GW (eq: Life Gem, Rage Gem; pet: Greedy Raven); DD (eq: Fire Heart, Stun Blaster; pet: Phoenix)" },
-      { rank: 5, name: "Warden Lalo", uses: "33 uses (2.1%)", performance: "2.61★ avg, 96.6% avg destruction, 69.7% triples", troops: "1 Baby Dragon, 23 Rocket Loon, 3 Ice Hound, 4 Inferno Dragon, 1 Minion, 2 Valkyrie | Spells: 2 Earthquake, 1 Poison, 3 Freeze, 1 Healing, 2 Totem, 1 Invisibility, 1 Rage, 1 Overgrowth", clanCastle: "1 Sky Wagon, 1 Inferno Dragon, 1 Ice Hound", heroes: "GW (eq: Eternal Tome, Life Gem; pet: Sneezy); RC (eq: Rocket Spear, Seeking Shield; pet: Phoenix); MP (eq: Dark Orb, Meteor Staff; pet: Greedy Raven); DD (eq: Flame Blower, Rocket Backpack; pet: Angry Jelly)" },
-    ],
-  },
-  {
-    date: "2026-06-24",
-    updated: "Updated hourly from the tracked Legend League poll data.",
-    stats: {
-      attacks: "1575",
-      avgStars: "2.59",
-      avgDestruction: "95.352%",
-      threeStarRate: "63.302%",
-      fullArmy: "1574",
-      discarded: "1",
-    },
-    intro: "1574 full-army attacks tracked today. Similar variants are combined.",
-    armies: [
-      { rank: 1, name: "Dragon Rider Air (DD Electro Fangs)", uses: "542 uses (34.4%)", performance: "2.61★ avg, 95.3% avg destruction, 64.4% triples", troops: "7 Dragon, 2 Rocket Loon, 8 Dragon Rider, 2 Archer | Spells: 6 Invisibility, 2 Totem, 1 Freeze, 1 Revive, 2 Rage", clanCastle: "1 Sky Wagon, 1 Rocket Loon, 2 Dragon Rider", heroes: "AQ (eq: Action Figure, Giant Arrow; pet: Frosty); GW (eq: Eternal Tome, Healing Tome; pet: Greedy Raven); MP (eq: Dark Orb, Meteor Staff; pet: Phoenix); DD (eq: Electro Fangs, Fire Heart; pet: Spirit Fox)" },
-      { rank: 2, name: "Super Bowler Smash", uses: "477 uses (30.3%)", performance: "2.53★ avg, 94.2% avg destruction, 58.1% triples", troops: "2 Ice Golem, 1 Apprentice Warden, 7 Super Bowler, 5 Healer, 1 Headhunter, 1 Baby Dragon, 2 Archer, 2 Minion | Spells: 5 Invisibility, 2 Rage, 2 Totem, 2 Revive", clanCastle: "1 Sky Wagon, 1 Super Valkyrie, 1 Super Yeti", heroes: "BK (eq: Earthquake Boots, Spiky Ball; pet: Phoenix); AQ (eq: Action Figure, Giant Arrow; pet: Frosty); GW (eq: Eternal Tome, Heroic Torch; pet: Poison Lizard); DD (eq: Electro Fangs, Fire Heart; pet: Spirit Fox)" },
-      { rank: 3, name: "Dragon Rider Air (DD Rocket Backpack)", uses: "312 uses (19.8%)", performance: "2.68★ avg, 97.1% avg destruction, 71.5% triples", troops: "8 Dragon, 6 Dragon Rider, 1 Sky Wagon, 4 Rocket Loon, 1 Baby Dragon | Spells: 3 Earthquake, 5 Totem, 1 Poison, 2 Freeze, 1 Overgrowth, 1 Revive", clanCastle: "2 Inferno Dragon, 1 Dragon Rider", heroes: "AQ (eq: Action Figure, Giant Arrow; pet: Frosty); GW (eq: Eternal Tome, Healing Tome; pet: Sneezy); MP (eq: Dark Orb, Meteor Staff; pet: Greedy Raven); DD (eq: Fire Heart, Rocket Backpack; pet: Phoenix)" },
-      { rank: 4, name: "Thrower Smash", uses: "113 uses (7.2%)", performance: "2.55★ avg, 95.4% avg destruction, 60.2% triples", troops: "2 Ice Golem, 10 Thrower, 5 Healer, 1 Ruin Witch, 1 Log Launcher, 3 Rocket Loon, 2 Super Barbarian, 3 Super Wall Breaker, 1 Headhunter, 1 Baby Dragon, 1 Archer | Spells: 3 Earthquake, 1 Skeleton, 1 Poison, 1 Invisibility, 4 Totem, 1 Freeze, 1 Overgrowth, 1 Revive", clanCastle: "1 Super Valkyrie, 1 Super Yeti", heroes: "BK (eq: Snake Bracelet, Spiky Ball; pet: Spirit Fox); AQ (eq: Action Figure, Giant Arrow; pet: Frosty); GW (eq: Life Gem, Rage Gem; pet: Sneezy); DD (eq: Fire Heart, Rocket Backpack; pet: Phoenix)" },
-      { rank: 5, name: "Super Yeti Smash", uses: "44 uses (2.8%)", performance: "2.43★ avg, 96.0% avg destruction, 54.5% triples", troops: "1 Super Wall Breaker, 1 Ice Golem, 2 Headhunter, 3 Druid, 7 Super Yeti, 1 Apprentice Warden, 4 Archer | Spells: 1 Rage, 2 Totem, 1 Invisibility, 3 Revive, 1 Skeleton, 1 Poison, 2 Freeze", clanCastle: "1 Siege Barracks, 1 Super Valkyrie, 1 Super Yeti", heroes: "BK (eq: Earthquake Boots, Spiky Ball; pet: Diggy); AQ (eq: Action Figure, Magic Mirror; pet: Frosty); GW (eq: Heroic Torch, Rage Gem; pet: Poison Lizard); DD (eq: Electro Fangs, Fire Heart; pet: Phoenix)" },
-    ],
-  },
-];
+    intro: lines.find((line) => line.includes("full-army") || line.includes("main attacks")) ?? "",
+    armies,
+  };
+}
+
+async function loadSummaries(): Promise<SummaryData[]> {
+  const res = await fetch("./legend_site/summaries.json", { cache: "no-store" });
+  const index = (await res.json()) as SiteIndex;
+  const loaded: SummaryData[] = [];
+  for (const item of index.summaries) {
+    if (summaryCache.has(item.date)) {
+      loaded.push(summaryCache.get(item.date)!);
+      continue;
+    }
+    const md = await fetch(`./legend_site/${item.file}`, { cache: "no-store" }).then((r) => r.text());
+    const parsed = parseSummaryMarkdown(item.date, md);
+    summaryCache.set(item.date, parsed);
+    loaded.push(parsed);
+  }
+  return loaded;
+}
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
@@ -95,8 +115,17 @@ function ArmyCard({ army }: { army: SummaryCard }) {
 }
 
 export default function LegendsSummary() {
-  const [selected, setSelected] = useState(summaries[0]?.date ?? "");
-  const current = useMemo(() => summaries.find((item) => item.date === selected) ?? summaries[0], [selected]);
+  const [summaries, setSummaries] = useState<SummaryData[]>([]);
+  const [selected, setSelected] = useState("");
+
+  useEffect(() => {
+    void loadSummaries().then((loaded) => {
+      setSummaries(loaded);
+      setSelected((current) => current || loaded[0]?.date || "");
+    });
+  }, []);
+
+  const current = useMemo(() => summaries.find((item) => item.date === selected) ?? summaries[0], [summaries, selected]);
 
   return (
     <main style={{ maxWidth: 1100, margin: "0 auto", padding: 24, fontFamily: "system-ui, sans-serif", color: "#111827", background: "#f9fafb" }}>
@@ -112,7 +141,7 @@ export default function LegendsSummary() {
             ))}
           </select>
         </label>
-        <div style={{ color: "#6b7280" }}>{current?.updated}</div>
+        <div style={{ color: "#6b7280" }}>{current?.updated ?? "Loading…"}</div>
       </div>
 
       <p style={{ marginTop: 16, color: "#374151" }}>{current?.intro}</p>
