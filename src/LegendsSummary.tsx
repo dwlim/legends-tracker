@@ -20,6 +20,9 @@ type SummaryData = {
     threeStarRate: string;
     fullArmy: string;
     discarded: string;
+    eligiblePlayers: string;
+    ineligiblePlayers: string;
+    retainedAttacks: string;
   };
   intro: string;
   armies: SummaryCard[];
@@ -33,11 +36,14 @@ const summaryCache = new Map<string, SummaryData>();
 
 function parseSummaryMarkdown(date: string, markdown: string): SummaryData {
   const lines = markdown.split(/\r?\n/);
-  const stat = (label: string) => {
-    const line = lines.find((entry) => entry.startsWith(`${label}:`));
-    return line ? line.slice(label.length + 2).trim() : "—";
+  const stat = (...labels: string[]) => {
+    for (const label of labels) {
+      const line = lines.find((entry) => entry.startsWith(`${label}:`));
+      if (line) return line.slice(label.length + 2).trim();
+    }
+    return "—";
   };
-  const armyStart = lines.findIndex((line) => line.startsWith("**Top 5 most popular armies"));
+  const armyStart = lines.findIndex((line) => /^\*\*Top \d+ most popular armies/.test(line));
   const armyLines = armyStart >= 0 ? lines.slice(armyStart + 1) : [];
   const armies: SummaryCard[] = [];
   let current: SummaryCard | null = null;
@@ -59,14 +65,17 @@ function parseSummaryMarkdown(date: string, markdown: string): SummaryData {
     date,
     updated: "Updated hourly from the tracked Legend League poll data.",
     stats: {
-      attacks: stat("Tracked attacks"),
-      avgStars: stat("Overall average stars"),
-      avgDestruction: stat("Overall average destruction"),
-      threeStarRate: stat("Overall 3-star rate"),
-      fullArmy: stat("Main attacks used for army comps"),
-      discarded: stat("Discarded partial/hero-only codes from army comps"),
+      attacks: stat("Tracked attacks after discards", "Overall tracked attacks", "Tracked attacks"),
+      avgStars: stat("Tracked attacks average stars", "Overall average stars"),
+      avgDestruction: stat("Tracked attacks average destruction", "Overall average destruction"),
+      threeStarRate: stat("Tracked attacks 3-star rate", "Overall 3-star rate"),
+      fullArmy: stat("Retained attacks after discarding outliers", "Full-army attacks used for army comps", "Main attacks used for army comps"),
+      discarded: stat("Discarded partial/hero-only codes from army comps", "Discarded partial/hero-only codes"),
+      eligiblePlayers: stat("Eligible players"),
+      ineligiblePlayers: stat("Ineligible players"),
+      retainedAttacks: stat("Retained attacks after discarding outliers"),
     },
-    intro: lines.find((line) => line.includes("full-army") || line.includes("main attacks")) ?? "",
+    intro: lines[13]?.trim() ?? lines.find((line) => line.includes("full-army") || line.includes("main attacks")) ?? "",
     armies,
   };
 }
@@ -94,6 +103,10 @@ async function loadSummaries(): Promise<SummaryData[]> {
     loaded.push(parsed);
   }
   return loaded;
+}
+
+function pickDefaultSummary(summaries: SummaryData[]) {
+  return [...summaries].sort((a, b) => b.date.localeCompare(a.date)).find((summary) => summary.armies.length > 0) ?? summaries[0];
 }
 
 function Stat({ label, value }: { label: string; value: string }) {
@@ -131,7 +144,8 @@ export default function LegendsSummary() {
     void loadSummaries()
       .then((loaded) => {
         setSummaries(loaded);
-        setSelected((current) => current || loaded[0]?.date || "");
+        const preferred = pickDefaultSummary(loaded)?.date || "";
+        setSelected((current) => current || preferred);
       })
       .catch((err: unknown) => {
         setError(err instanceof Error ? err.message : "Failed to load legends summaries.");
@@ -170,8 +184,14 @@ export default function LegendsSummary() {
       </div>
 
       <section style={{ marginTop: 24 }}>
-        <h2>Top 5 armies</h2>
-        {current?.armies.map((army) => <ArmyCard key={`${current.date}-${army.rank}`} army={army} />)}
+        <h2>Top armies</h2>
+        {current?.armies.length ? (
+          current.armies.map((army) => <ArmyCard key={`${current.date}-${army.rank}`} army={army} />)
+        ) : (
+          <div style={{ padding: 16, border: "1px dashed #d1d5db", borderRadius: 12, background: "#fff", color: "#6b7280" }}>
+            No army data is available for this day yet.
+          </div>
+        )}
       </section>
     </main>
   );
