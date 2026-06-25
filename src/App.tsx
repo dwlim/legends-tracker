@@ -1,17 +1,7 @@
-import { UpgradeLibrary } from "./UpgradeLibrary";
-import "./styles.css";
+import LegendsSummary from "./LegendsSummary";
 
 function App() {
-  return (
-    <main className="page">
-      <div className="ambient ambient-one" />
-      <div className="ambient ambient-two" />
-
-      <section className="shell">
-        <UpgradeLibrary />
-      </section>
-    </main>
-  );
+  return <LegendsSummary />;
 }
 
 export default App;

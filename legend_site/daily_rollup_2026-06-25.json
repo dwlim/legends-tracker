@@ -1,0 +1,25 @@
+{
+  "snapshot_date": "2026-06-25",
+  "created_at": "2026-06-25T05:45:16.322445+00:00",
+  "tracked_players": 200,
+  "overall_stats": {
+    "attack_count": 0,
+    "stars_total": 0,
+    "destruction_total": 0,
+    "avg_stars": 0,
+    "avg_destruction": 0,
+    "three_star_rate": 0
+  },
+  "attack_count": 0,
+  "eligible_players": 0,
+  "ineligible_players": 0,
+  "discarded_attacks": 0,
+  "decodeValidation": {
+    "total_unknown_entries": 0,
+    "unknown_counts": {},
+    "examples": {}
+  },
+  "attacks": [],
+  "player_details": {},
+  "grouped_armies": []
+}
