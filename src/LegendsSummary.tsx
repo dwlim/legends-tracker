@@ -73,11 +73,11 @@ function parseSummaryMarkdown(date: string, markdown: string): SummaryData {
 
 function siteUrl(path: string) {
   const base = import.meta.env.BASE_URL.endsWith("/") ? import.meta.env.BASE_URL : `${import.meta.env.BASE_URL}/`;
-  return `${base}${path.replace(/^\.?\/?/, "")}`;
+  return new URL(path.replace(/^\.?\/?/, ""), window.location.origin + base).toString();
 }
 
 async function loadSummaries(): Promise<SummaryData[]> {
-  const res = await fetch(siteUrl("legend_site/summaries.json"), { cache: "no-store" });
+  const res = await fetch(siteUrl("summaries.json"), { cache: "no-store" });
   if (!res.ok) throw new Error(`Failed to load summaries index (${res.status})`);
   const index = (await res.json()) as SiteIndex;
   const loaded: SummaryData[] = [];
@@ -86,7 +86,7 @@ async function loadSummaries(): Promise<SummaryData[]> {
       loaded.push(summaryCache.get(item.date)!);
       continue;
     }
-    const mdRes = await fetch(siteUrl(`legend_site/${item.file}`), { cache: "no-store" });
+    const mdRes = await fetch(siteUrl(item.file), { cache: "no-store" });
     if (!mdRes.ok) throw new Error(`Failed to load summary ${item.file} (${mdRes.status})`);
     const md = await mdRes.text();
     const parsed = parseSummaryMarkdown(item.date, md);
